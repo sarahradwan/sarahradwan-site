@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New enquiry — Sara Radwan</title>
+  <style>
+    body { font-family: 'DM Sans', Helvetica, Arial, sans-serif; background: #F7F4EF; margin: 0; padding: 40px 20px; }
+    .card { background: #fff; max-width: 580px; margin: 0 auto; padding: 40px; border-top: 4px solid #C4622D; }
+    h1 { font-size: 18px; color: #111; margin: 0 0 24px; }
+    .row { margin-bottom: 16px; }
+    .label { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #888; }
+    .value { font-size: 15px; color: #111; margin-top: 4px; }
+    .message-box { background: #F7F4EF; padding: 16px; margin-top: 4px; white-space: pre-wrap; font-size: 15px; color: #111; }
+    .footer { margin-top: 32px; font-size: 12px; color: #aaa; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>New enquiry from your website</h1>
+    <div class="row">
+      <div class="label">Type</div>
+      <div class="value">{{ enquiry-type }}</div>
+    </div>
+    <div class="row">
+      <div class="label">Name</div>
+      <div class="value">{{ name }}</div>
+    </div>
+    <div class="row">
+      <div class="label">Email</div>
+      <div class="value"><a href="mailto:{{ email }}" style="color:#C4622D;">{{ email }}</a></div>
+    </div>
+    <div class="row">
+      <div class="label">Organisation</div>
+      <div class="value">{{ organisation }}</div>
+    </div>
+    <div class="row">
+      <div class="label">Message</div>
+      <div class="message-box">{{ message }}</div>
+    </div>
+    <div class="footer">Sent via sarahradwan.me contact form</div>
+  </div>
+</body>
+</html>

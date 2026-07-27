@@ -1,0 +1,64 @@
+# ── Build ─────────────────────────────────────────────────────────────────────
+[build]
+# The site is pre-compiled. Netlify deploys the dist/ folder directly.
+command   = ""
+publish   = "dist"
+functions = "netlify/functions"
+
+  [build.environment]
+  NODE_VERSION = "20"
+
+# ── Functions ─────────────────────────────────────────────────────────────────
+[functions]
+  [functions.emails]
+  included_files = ["./emails/**"]
+
+# ── Security headers ──────────────────────────────────────────────────────────
+[[headers]]
+for = "/*"
+
+  [headers.values]
+  X-Frame-Options            = "SAMEORIGIN"
+  X-Content-Type-Options     = "nosniff"
+  Referrer-Policy            = "strict-origin-when-cross-origin"
+  Content-Security-Policy    = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://res.cloudinary.com https://sarahradwan.me; connect-src 'self';"
+
+# ── Image CDN — Cloudinary auto-format + quality ──────────────────────────────
+# Requests to /images/* are proxied through Cloudinary which serves WebP/AVIF
+# automatically and compresses intelligently. All media/ images should be
+# referenced as /images/<filename> in the React components.
+[[redirects]]
+from   = "/images/*"
+to     = "https://res.cloudinary.com/dskzcetqe/image/fetch/f_auto,q_auto/https://sarahradwan.me/cld-assets/images/:splat?_a=BBFAAAAA0"
+status = 302
+force  = true
+
+[[redirects]]
+from   = "/cld-assets/images/*"
+to     = "/images/:splat"
+status = 200
+force  = true
+
+# ── Legacy URL redirect ───────────────────────────────────────────────────────
+[[redirects]]
+from   = "/ai.html"
+to     = "/ai"
+status = 301
+
+# ── SPA fallback ─────────────────────────────────────────────────────────────
+[[redirects]]
+from   = "/*"
+to     = "/index.html"
+status = 200
+
+# ── Production context ────────────────────────────────────────────────────────
+[context]
+  [context.production]
+    [context.production.functions]
+      [context.production.functions.emails]
+      included_files = ["./emails/**"]
+
+  [context.master]
+    [context.master.functions]
+      [context.master.functions.emails]
+      included_files = ["./emails/**"]
