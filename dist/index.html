@@ -28,6 +28,69 @@
       <textarea name="message"></textarea>
     </form>
     <div id="root"></div>
-  
 
+<style>
+#lb-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s}
+#lb-overlay.open{opacity:1;pointer-events:all}
+#lb-img{max-width:90vw;max-height:88vh;object-fit:contain;border-radius:2px;box-shadow:0 8px 60px rgba(0,0,0,.7);transition:opacity .2s}
+#lb-close{position:fixed;top:18px;right:22px;color:#fff;font-size:32px;cursor:pointer;line-height:1;opacity:.7;background:none;border:none;padding:4px 8px}
+#lb-close:hover{opacity:1}
+#lb-prev,#lb-next{position:fixed;top:50%;transform:translateY(-50%);color:#fff;font-size:36px;cursor:pointer;opacity:.5;background:none;border:none;padding:12px 18px;user-select:none}
+#lb-prev:hover,#lb-next:hover{opacity:1}
+#lb-prev{left:10px}
+#lb-next{right:10px}
+#lb-counter{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);color:#fff;font-size:13px;opacity:.5;letter-spacing:.08em}
+</style>
+<div id="lb-overlay" role="dialog" aria-modal="true" aria-label="Image viewer">
+  <button id="lb-close" aria-label="Close">&#x2715;</button>
+  <button id="lb-prev" aria-label="Previous">&#x2039;</button>
+  <img id="lb-img" src="" alt="">
+  <button id="lb-next" aria-label="Next">&#x203a;</button>
+  <div id="lb-counter"></div>
+</div>
+<script>
+(function(){
+  var overlay=document.getElementById('lb-overlay');
+  var img=document.getElementById('lb-img');
+  var counter=document.getElementById('lb-counter');
+  var imgs=[];var cur=0;
+  function open(srcs,idx){
+    imgs=srcs;cur=idx;
+    img.src=imgs[cur];
+    counter.textContent=(cur+1)+' / '+imgs.length;
+    overlay.classList.add('open');
+    document.body.style.overflow='hidden';
+  }
+  function close(){
+    overlay.classList.remove('open');
+    document.body.style.overflow='';
+    img.src='';
+  }
+  function prev(){cur=(cur-1+imgs.length)%imgs.length;img.src=imgs[cur];counter.textContent=(cur+1)+' / '+imgs.length;}
+  function next(){cur=(cur+1)%imgs.length;img.src=imgs[cur];counter.textContent=(cur+1)+' / '+imgs.length;}
+  document.getElementById('lb-close').onclick=close;
+  document.getElementById('lb-prev').onclick=function(e){e.stopPropagation();prev();};
+  document.getElementById('lb-next').onclick=function(e){e.stopPropagation();next();};
+  overlay.onclick=function(e){if(e.target===overlay)close();};
+  document.addEventListener('keydown',function(e){
+    if(!overlay.classList.contains('open'))return;
+    if(e.key==='Escape')close();
+    if(e.key==='ArrowLeft')prev();
+    if(e.key==='ArrowRight')next();
+  });
+  document.addEventListener('click',function(e){
+    var el=e.target;
+    if(el.tagName!=='IMG')return;
+    var alt=el.getAttribute('alt')||'';
+    if(!alt.includes('project detail'))return;
+    var container=el.closest('.grid');
+    if(!container)return;
+    var all=Array.from(container.querySelectorAll('img')).map(function(i){return i.src;});
+    var idx=all.indexOf(el.src);
+    if(idx<0)idx=0;
+    e.preventDefault();
+    open(all,idx);
+  });
+})();
+</script>
 </body></html>
