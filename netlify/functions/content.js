@@ -1,5 +1,6 @@
 const { createHmac, createHash, timingSafeEqual } = require("crypto");
 
+const VERSION = "v8"; // bump on every change — shown in ?debug=1 so we know what's live
 const COOKIE = "sara_admin";
 const CONTENT_PUBLIC_ID = "sara-radwan/cms-content";
 
@@ -29,32 +30,67 @@ function isAuthenticated(event) {
   } catch { return false; }
 }
 
+// Returns { data, trace } — trace records every step so failures are visible
+// via /.netlify/functions/content?debug=1 instead of silently becoming null.
 async function readContent() {
+  const trace = [];
   const { CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } = process.env;
-  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) return null;
 
+  trace.push({
+    step: "env",
+    cloudName: CLOUDINARY_CLOUD_NAME || "MISSING",
+    apiKeySet: Boolean(CLOUDINARY_API_KEY),
+    apiSecretSet: Boolean(CLOUDINARY_API_SECRET),
+  });
+
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+    trace.push({ step: "abort", reason: "Cloudinary env vars missing in Netlify" });
+    return { data: null, trace };
+  }
+
+  const creds = Buffer.from(`${CLOUDINARY_API_KEY}:${CLOUDINARY_API_SECRET}`).toString("base64");
+
+  // Step 1 — Admin API lookup for the resource's versioned URL.
+  let secureUrl;
   try {
-    // Step 1: Ask Cloudinary Admin API for the resource metadata.
-    // This call is NOT CDN-cached — it always returns the current version info.
-    const creds = Buffer.from(`${CLOUDINARY_API_KEY}:${CLOUDINARY_API_SECRET}`).toString("base64");
-    const metaRes = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/resources/raw/upload?public_ids[]=${encodeURIComponent(CONTENT_PUBLIC_ID)}`,
-      { headers: { Authorization: `Basic ${creds}` } }
-    );
-    if (!metaRes.ok) return null;
+    const metaUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/resources/raw/upload?public_ids[]=${encodeURIComponent(CONTENT_PUBLIC_ID)}`;
+    const metaRes = await fetch(metaUrl, { headers: { Authorization: `Basic ${creds}` } });
+    const metaBody = await metaRes.text();
 
-    const { resources } = await metaRes.json();
-    if (!resources || resources.length === 0) return null;
+    trace.push({
+      step: "adminApi",
+      status: metaRes.status,
+      body: metaBody.slice(0, 400),
+    });
 
-    // Step 2: Fetch the file using the versioned secure_url.
-    // The version is embedded in the URL (e.g. /v1234567890/), so each
-    // publish creates a URL that has never been cached before → always fresh.
-    const { secure_url } = resources[0];
-    const fileRes = await fetch(secure_url);
-    if (!fileRes.ok) return null;
-    return await fileRes.json();
-  } catch {
-    return null;
+    if (!metaRes.ok) return { data: null, trace };
+
+    const parsed = JSON.parse(metaBody);
+    if (!parsed.resources || parsed.resources.length === 0) {
+      trace.push({ step: "abort", reason: `No resource found with public_id "${CONTENT_PUBLIC_ID}" — nothing has been published yet, or it was saved under a different name.` });
+      return { data: null, trace };
+    }
+    secureUrl = parsed.resources[0].secure_url;
+    trace.push({ step: "resolvedUrl", secureUrl });
+  } catch (err) {
+    trace.push({ step: "adminApi", error: err.message });
+    return { data: null, trace };
+  }
+
+  // Step 2 — fetch the JSON from the versioned URL (never CDN-stale).
+  try {
+    const fileRes = await fetch(secureUrl);
+    const fileBody = await fileRes.text();
+    trace.push({ step: "fetchFile", status: fileRes.status, bytes: fileBody.length });
+
+    if (!fileRes.ok) return { data: null, trace };
+
+    const data = JSON.parse(fileBody);
+    trace.push({ step: "parsed", projectCount: data?.projects?.length ?? "n/a" });
+    return { data, trace };
+  } catch (err) {
+    trace.push({ step: "fetchFile", error: err.message });
+    return { data: null, trace };
   }
 }
 
@@ -111,17 +147,22 @@ async function writeContent(data) {
 }
 
 exports.handler = async function (event) {
-  // GET — load content (public)
+  // GET — load content (public). ?debug=1 returns the diagnostic trace.
   if (event.httpMethod === "GET") {
+    const debug = event.queryStringParameters?.debug === "1";
     try {
-      const data = await readContent();
+      const { data, trace } = await readContent();
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data || null),
+        body: JSON.stringify(debug ? { version: VERSION, trace, hasData: data !== null } : (data || null)),
       };
-    } catch {
-      return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: "null" };
+    } catch (err) {
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: debug ? JSON.stringify({ version: VERSION, fatal: err.message }) : "null",
+      };
     }
   }
 
