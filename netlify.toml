@@ -1,7 +1,7 @@
 # ── Build ─────────────────────────────────────────────────────────────────────
 [build]
 # The site is pre-compiled. Netlify deploys the dist/ folder directly.
-command   = ""
+command   = "npm install"
 publish   = "dist"
 functions = "netlify/functions"
 
