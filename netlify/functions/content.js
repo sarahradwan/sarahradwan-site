@@ -1,8 +1,10 @@
 const { createHmac, createHash, timingSafeEqual } = require("crypto");
 
-const VERSION = "v9"; // bump on every change — shown in ?debug=1 so we know what's live
+const VERSION = "v10"; // bump on every change — shown in ?debug=1 so we know what's live
 const COOKIE = "sara_admin";
-const CONTENT_PUBLIC_ID = "sara-radwan/cms-content";
+// For raw files Cloudinary treats the extension as part of the public_id —
+// it appended ".json" on upload, so the read must look for the same name.
+const CONTENT_PUBLIC_ID = "sara-radwan/cms-content.json";
 
 function getCookie(header, name) {
   if (!header) return null;
