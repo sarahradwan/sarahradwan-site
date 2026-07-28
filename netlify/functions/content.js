@@ -1,6 +1,6 @@
 const { createHmac, createHash, timingSafeEqual } = require("crypto");
 
-const VERSION = "v8"; // bump on every change — shown in ?debug=1 so we know what's live
+const VERSION = "v9"; // bump on every change — shown in ?debug=1 so we know what's live
 const COOKIE = "sara_admin";
 const CONTENT_PUBLIC_ID = "sara-radwan/cms-content";
 
@@ -68,6 +68,21 @@ async function readContent() {
     const parsed = JSON.parse(metaBody);
     if (!parsed.resources || parsed.resources.length === 0) {
       trace.push({ step: "abort", reason: `No resource found with public_id "${CONTENT_PUBLIC_ID}" — nothing has been published yet, or it was saved under a different name.` });
+      // List what raw files DO exist, so a name mismatch is visible.
+      try {
+        const listRes = await fetch(
+          `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/resources/raw?max_results=50`,
+          { headers: { Authorization: `Basic ${creds}` } }
+        );
+        const listBody = await listRes.json();
+        trace.push({
+          step: "listAllRawFiles",
+          status: listRes.status,
+          found: (listBody.resources || []).map(r => r.public_id),
+        });
+      } catch (err) {
+        trace.push({ step: "listAllRawFiles", error: err.message });
+      }
       return { data: null, trace };
     }
     secureUrl = parsed.resources[0].secure_url;
@@ -140,22 +155,47 @@ async function writeContent(data) {
     }
   );
 
+  const resBody = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Cloudinary save failed (${res.status})`);
+    throw new Error(resBody.error?.message || `Cloudinary save failed (${res.status})`);
   }
+  // Return what Cloudinary actually stored, so callers can verify the public_id.
+  return { storedPublicId: resBody.public_id, url: resBody.secure_url, bytes: resBody.bytes };
 }
 
 exports.handler = async function (event) {
-  // GET — load content (public). ?debug=1 returns the diagnostic trace.
+  // GET — load content (public).
+  //   ?debug=1 → returns the read diagnostic trace
+  //   ?debug=2 → additionally runs a write self-test (only if no content exists yet)
   if (event.httpMethod === "GET") {
-    const debug = event.queryStringParameters?.debug === "1";
+    const debug = event.queryStringParameters?.debug;
     try {
       const { data, trace } = await readContent();
+
+      if (debug === "2") {
+        const selftest = {};
+        if (data !== null) {
+          selftest.skipped = "Content already exists — write test skipped so it isn't overwritten.";
+        } else {
+          try {
+            selftest.write = await writeContent({ __selftest: true, savedAt: new Date().toISOString() });
+            const recheck = await readContent();
+            selftest.readBack = { hasData: recheck.data !== null, trace: recheck.trace };
+          } catch (err) {
+            selftest.writeError = err.message;
+          }
+        }
+        return {
+          statusCode: 200,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ version: VERSION, trace, hasData: data !== null, selftest }),
+        };
+      }
+
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(debug ? { version: VERSION, trace, hasData: data !== null } : (data || null)),
+        body: JSON.stringify(debug === "1" ? { version: VERSION, trace, hasData: data !== null } : (data || null)),
       };
     } catch (err) {
       return {
@@ -173,8 +213,8 @@ exports.handler = async function (event) {
     }
     try {
       const data = JSON.parse(event.body);
-      await writeContent(data);
-      return { statusCode: 200, body: JSON.stringify({ success: true }) };
+      const stored = await writeContent(data);
+      return { statusCode: 200, body: JSON.stringify({ success: true, ...stored }) };
     } catch (err) {
       return { statusCode: 500, body: JSON.stringify({ message: err.message }) };
     }
