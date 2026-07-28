@@ -33,8 +33,9 @@ async function readContent() {
   const { CLOUDINARY_CLOUD_NAME } = process.env;
   if (!CLOUDINARY_CLOUD_NAME) return null;
   try {
-    const url = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/raw/upload/${CONTENT_PUBLIC_ID}?t=${Date.now()}`;
-    const res = await fetch(url);
+    // fl_no_cache forces Cloudinary to bypass CDN cache and serve fresh content
+    const url = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/raw/upload/fl_no_cache/${CONTENT_PUBLIC_ID}`;
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return null;
     return await res.json();
   } catch {
@@ -52,7 +53,7 @@ async function writeContent(data) {
   const timestamp = Math.round(Date.now() / 1000);
   const publicId = CONTENT_PUBLIC_ID;
 
-  const paramsToSign = `overwrite=true&public_id=${publicId}&timestamp=${timestamp}`;
+  const paramsToSign = `invalidate=true&overwrite=true&public_id=${publicId}&timestamp=${timestamp}`;
   const signature = createHash("sha1")
     .update(paramsToSign + CLOUDINARY_API_SECRET)
     .digest("hex");
@@ -66,6 +67,7 @@ async function writeContent(data) {
     Buffer.from(field("timestamp", String(timestamp))),
     Buffer.from(field("public_id", publicId)),
     Buffer.from(field("overwrite", "true")),
+    Buffer.from(field("invalidate", "true")),
     Buffer.from(field("signature", signature)),
     Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="content.json"\r\nContent-Type: application/json\r\n\r\n`
