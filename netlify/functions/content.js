@@ -30,14 +30,29 @@ function isAuthenticated(event) {
 }
 
 async function readContent() {
-  const { CLOUDINARY_CLOUD_NAME } = process.env;
-  if (!CLOUDINARY_CLOUD_NAME) return null;
+  const { CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } = process.env;
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) return null;
+
   try {
-    // fl_no_cache forces Cloudinary to bypass CDN cache and serve fresh content
-    const url = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/raw/upload/fl_no_cache/${CONTENT_PUBLIC_ID}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
-    return await res.json();
+    // Step 1: Ask Cloudinary Admin API for the resource metadata.
+    // This call is NOT CDN-cached — it always returns the current version info.
+    const creds = Buffer.from(`${CLOUDINARY_API_KEY}:${CLOUDINARY_API_SECRET}`).toString("base64");
+    const metaRes = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/resources/raw/upload?public_ids[]=${encodeURIComponent(CONTENT_PUBLIC_ID)}`,
+      { headers: { Authorization: `Basic ${creds}` } }
+    );
+    if (!metaRes.ok) return null;
+
+    const { resources } = await metaRes.json();
+    if (!resources || resources.length === 0) return null;
+
+    // Step 2: Fetch the file using the versioned secure_url.
+    // The version is embedded in the URL (e.g. /v1234567890/), so each
+    // publish creates a URL that has never been cached before → always fresh.
+    const { secure_url } = resources[0];
+    const fileRes = await fetch(secure_url);
+    if (!fileRes.ok) return null;
+    return await fileRes.json();
   } catch {
     return null;
   }
@@ -53,7 +68,7 @@ async function writeContent(data) {
   const timestamp = Math.round(Date.now() / 1000);
   const publicId = CONTENT_PUBLIC_ID;
 
-  const paramsToSign = `invalidate=true&overwrite=true&public_id=${publicId}&timestamp=${timestamp}`;
+  const paramsToSign = `overwrite=true&public_id=${publicId}&timestamp=${timestamp}`;
   const signature = createHash("sha1")
     .update(paramsToSign + CLOUDINARY_API_SECRET)
     .digest("hex");
@@ -67,7 +82,6 @@ async function writeContent(data) {
     Buffer.from(field("timestamp", String(timestamp))),
     Buffer.from(field("public_id", publicId)),
     Buffer.from(field("overwrite", "true")),
-    Buffer.from(field("invalidate", "true")),
     Buffer.from(field("signature", signature)),
     Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="content.json"\r\nContent-Type: application/json\r\n\r\n`
