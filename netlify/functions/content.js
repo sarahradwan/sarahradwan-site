@@ -1,9 +1,7 @@
-const { createHmac, timingSafeEqual } = require("crypto");
-const { getStore } = require("@netlify/blobs");
+const { createHmac, createHash, timingSafeEqual } = require("crypto");
 
 const COOKIE = "sara_admin";
-const STORE_NAME = "sara-content";
-const CONTENT_KEY = "content";
+const CONTENT_PUBLIC_ID = "sara-radwan/cms-content";
 
 function getCookie(header, name) {
   if (!header) return null;
@@ -31,13 +29,76 @@ function isAuthenticated(event) {
   } catch { return false; }
 }
 
-exports.handler = async function (event) {
-  const store = getStore({ name: STORE_NAME, consistency: "strong" });
+async function readContent() {
+  const { CLOUDINARY_CLOUD_NAME } = process.env;
+  if (!CLOUDINARY_CLOUD_NAME) return null;
+  try {
+    const url = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/raw/upload/${CONTENT_PUBLIC_ID}?t=${Date.now()}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
 
-  // GET — load content (public, no auth needed)
+async function writeContent(data) {
+  const { CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } = process.env;
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+    throw new Error("Cloudinary credentials not configured in Netlify environment variables.");
+  }
+
+  const jsonString = JSON.stringify(data);
+  const timestamp = Math.round(Date.now() / 1000);
+  const publicId = CONTENT_PUBLIC_ID;
+
+  const paramsToSign = `overwrite=true&public_id=${publicId}&timestamp=${timestamp}`;
+  const signature = createHash("sha1")
+    .update(paramsToSign + CLOUDINARY_API_SECRET)
+    .digest("hex");
+
+  const boundary = `----FormBoundary${timestamp}`;
+  const field = (name, value) =>
+    `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`;
+
+  const parts = [
+    Buffer.from(field("api_key", CLOUDINARY_API_KEY)),
+    Buffer.from(field("timestamp", String(timestamp))),
+    Buffer.from(field("public_id", publicId)),
+    Buffer.from(field("overwrite", "true")),
+    Buffer.from(field("signature", signature)),
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="content.json"\r\nContent-Type: application/json\r\n\r\n`
+    ),
+    Buffer.from(jsonString),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ];
+
+  const body = Buffer.concat(parts);
+
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        "Content-Length": String(body.byteLength),
+      },
+      body,
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Cloudinary save failed (${res.status})`);
+  }
+}
+
+exports.handler = async function (event) {
+  // GET — load content (public)
   if (event.httpMethod === "GET") {
     try {
-      const data = await store.get(CONTENT_KEY, { type: "json" });
+      const data = await readContent();
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
@@ -55,7 +116,7 @@ exports.handler = async function (event) {
     }
     try {
       const data = JSON.parse(event.body);
-      await store.setJSON(CONTENT_KEY, data);
+      await writeContent(data);
       return { statusCode: 200, body: JSON.stringify({ success: true }) };
     } catch (err) {
       return { statusCode: 500, body: JSON.stringify({ message: err.message }) };
