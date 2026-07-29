@@ -145,10 +145,13 @@
         var wrap = document.createElement('div');
         wrap.className = 'pdf-embed-wrap';
 
-        // Frame the PDF from this domain via the /cdn-pdf/* rewrite in
-        // netlify.toml. Framing Cloudinary directly is cross-origin and
-        // Chrome blocks it under the site's frame-src policy.
-        var framed = url.replace(/^https?:\/\/res\.cloudinary\.com\/[^/]+\//, '/cdn-pdf/');
+        // Serve the PDF through our own function rather than framing
+        // res.cloudinary.com directly: a cross-origin frame is blocked by the
+        // site's frame-src policy, and the function also signs the request so
+        // it works whether or not Cloudinary allows plain PDF delivery.
+        var framed = /^https?:\/\/res\.cloudinary\.com\//.test(url)
+          ? '/.netlify/functions/pdf?u=' + encodeURIComponent(url)
+          : url;
 
         var frame = document.createElement('iframe');
         frame.className = 'pdf-embed';
