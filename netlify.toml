@@ -42,6 +42,17 @@ to     = "/images/:splat"
 status = 200
 force  = true
 
+# ── PDF proxy ─────────────────────────────────────────────────────────────────
+# Serves Cloudinary-hosted project PDFs from this domain (status 200 = rewrite,
+# not a redirect). The inline PDF viewer then frames a same-origin URL, so it
+# cannot be blocked by frame-src regardless of how the CSP is read — a
+# cross-origin frame to Cloudinary showed "This content is blocked" in Chrome.
+[[redirects]]
+from   = "/cdn-pdf/*"
+to     = "https://res.cloudinary.com/dskzcetqe/:splat"
+status = 200
+force  = true
+
 # ── Legacy URL redirect ───────────────────────────────────────────────────────
 [[redirects]]
 from   = "/ai.html"

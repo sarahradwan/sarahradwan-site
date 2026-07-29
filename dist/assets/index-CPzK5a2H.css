@@ -57,8 +57,8 @@
    true proportions — nothing is cropped. */
 [data-page="project"] section.grid:has(img[alt*="project detail"]) {
   display: block !important;
-  columns: 3;
-  column-gap: 14px;
+  columns: 4;
+  column-gap: 12px;
   padding-top: 3rem !important;
   padding-bottom: 3rem !important;
 }
@@ -69,7 +69,7 @@
   page-break-inside: avoid;
   display: block;
   width: 100%;
-  margin: 0 0 14px;
+  margin: 0 0 12px;
   cursor: zoom-in;
   transition: opacity .25s ease;
 }
@@ -80,13 +80,13 @@
 
 @media (max-width: 1024px) {
   [data-page="project"] section.grid:has(img[alt*="project detail"]) {
-    columns: 2;
+    columns: 3;
   }
 }
 
 @media (max-width: 640px) {
   [data-page="project"] section.grid:has(img[alt*="project detail"]) {
-    columns: 1;
+    columns: 2;
   }
   [data-page="project"] div:has(> img[alt$=" project"]),
   [data-page="project"] img[alt$=" project"] {
@@ -129,25 +129,84 @@
   .pdf-embed-fallback { display: block; }
 }
 
-/* ── Show the work before the write-up ───────────────────────────────────────
-   Source order puts ~1800px of case-study copy between the hero and the
-   gallery, so the images sat well below the fold. Reorder visually with
-   flexbox rather than moving nodes — React owns this DOM and would revert a
-   manual move on its next render. Unlisted children default to order 5, so
-   the body copy and deliverables keep their relative order between the
-   gallery and the next-project link. */
+/* ── Split hero + reading order ──────────────────────────────────────────────
+   Source order is header, hero, copy, deliverables, gallery, next-project, so
+   the gallery sat below ~1800px of copy. Lay `main` out as a grid: the header
+   and hero share row 1 side by side, the gallery takes row 2, and everything
+   else auto-flows into rows below in source order. Done in CSS rather than by
+   moving nodes — React owns this DOM and would revert a manual move. */
 [data-page="project"] main {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
 }
-[data-page="project"] main > * { order: 5; }
-[data-page="project"] main > header { order: 1; }
-[data-page="project"] main > div:has(> img[alt$=" project"]) { order: 2; }
-[data-page="project"] main > section.grid:has(img[alt*="project detail"]) { order: 3; }
-[data-page="project"] main > a { order: 9; }
+[data-page="project"] main > * { grid-column: 1 / -1; }
+[data-page="project"] main > header { grid-column: 1; grid-row: 1; }
+[data-page="project"] main > div:has(> img[alt$=" project"]) {
+  grid-column: 2;
+  grid-row: 1;
+  max-height: none !important;
+  height: 100%;
+}
+[data-page="project"] main > div:has(> img[alt$=" project"]) img {
+  max-height: none !important;
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+[data-page="project"] main > section.grid:has(img[alt*="project detail"]) { grid-row: 2; }
 
-/* Trim the generous vertical rhythm on the copy blocks a little */
+/* The header no longer spans the page, so its container padding would leave
+   the text floating mid-column. */
+[data-page="project"] main > header .container {
+  max-width: none;
+  padding-left: clamp(1.5rem, 4vw, 4.5rem);
+  padding-right: clamp(1.5rem, 3vw, 3rem);
+}
+
+/* Trim the generous vertical rhythm on the copy blocks */
 [data-page="project"] main > section.py-20 {
   padding-top: 3.5rem !important;
   padding-bottom: 3.5rem !important;
 }
+
+/* ── Single column below the split-hero breakpoint ───────────────────────── */
+@media (max-width: 900px) {
+  [data-page="project"] main { grid-template-columns: 1fr; }
+  [data-page="project"] main > header { grid-column: 1 / -1; grid-row: 1; }
+  [data-page="project"] main > div:has(> img[alt$=" project"]) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    height: auto;
+    max-height: 300px !important;
+  }
+  [data-page="project"] main > div:has(> img[alt$=" project"]) img {
+    height: auto;
+    max-height: 300px !important;
+  }
+  [data-page="project"] main > section.grid:has(img[alt*="project detail"]) { grid-row: 3; }
+}
+
+/* ── Scroll cue ──────────────────────────────────────────────────────────────
+   With the hero beside the copy the page no longer opens on a full-bleed
+   image, but a marker still helps signal there is more below. */
+[data-page="project"] main > header .container::after {
+  content: "Scroll for the full story ↓";
+  display: block;
+  margin-top: 2rem;
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  opacity: .55;
+}
+
+/* Discreet escape hatch beneath the inline PDF viewer */
+.pdf-embed-escape { margin-top: .75rem; text-align: right; }
+.pdf-embed-escape a {
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: rgba(0,0,0,.5);
+  text-decoration: none;
+}
+.pdf-embed-escape a:hover { color: #C4622D; }
+@media (max-width: 767px) { .pdf-embed-escape { display: none; } }

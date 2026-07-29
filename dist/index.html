@@ -145,9 +145,14 @@
         var wrap = document.createElement('div');
         wrap.className = 'pdf-embed-wrap';
 
+        // Frame the PDF from this domain via the /cdn-pdf/* rewrite in
+        // netlify.toml. Framing Cloudinary directly is cross-origin and
+        // Chrome blocks it under the site's frame-src policy.
+        var framed = url.replace(/^https?:\/\/res\.cloudinary\.com\/[^/]+\//, '/cdn-pdf/');
+
         var frame = document.createElement('iframe');
         frame.className = 'pdf-embed';
-        frame.src = url + '#view=FitH&toolbar=0&navpanes=0';
+        frame.src = framed + '#view=FitH&toolbar=0&navpanes=0';
         frame.title = 'Project PDF';
         frame.setAttribute('loading', 'lazy');
 
@@ -165,8 +170,21 @@
         fallback.appendChild(note);
         fallback.appendChild(alt);
 
+        // Quiet escape hatch under the viewer, in case the PDF cannot render
+        // in the frame on a given browser.
+        var escape = document.createElement('p');
+        escape.className = 'pdf-embed-escape';
+        var escapeLink = document.createElement('a');
+        escapeLink.href = url;
+        escapeLink.target = '_blank';
+        escapeLink.rel = 'noreferrer';
+        escapeLink.textContent = 'Open in a new tab ↗';
+        escapeLink.dataset.pdfEmbedded = '1';
+        escape.appendChild(escapeLink);
+
         wrap.appendChild(frame);
         wrap.appendChild(fallback);
+        wrap.appendChild(escape);
 
         link.dataset.pdfEmbedded = '1';
         if (link.parentNode) link.parentNode.replaceChild(wrap, link);
