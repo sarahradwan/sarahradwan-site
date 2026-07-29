@@ -53,6 +53,7 @@
   var overlay=document.getElementById('lb-overlay');
   var img=document.getElementById('lb-img');
   var counter=document.getElementById('lb-counter');
+  if(!overlay||!img||!counter)return;
   var imgs=[];var cur=0;
   function open(srcs,idx){
     imgs=srcs;cur=idx;
@@ -68,9 +69,12 @@
   }
   function prev(){cur=(cur-1+imgs.length)%imgs.length;img.src=imgs[cur];counter.textContent=(cur+1)+' / '+imgs.length;}
   function next(){cur=(cur+1)%imgs.length;img.src=imgs[cur];counter.textContent=(cur+1)+' / '+imgs.length;}
-  document.getElementById('lb-close').onclick=close;
-  document.getElementById('lb-prev').onclick=function(e){e.stopPropagation();prev();};
-  document.getElementById('lb-next').onclick=function(e){e.stopPropagation();next();};
+  var btnClose=document.getElementById('lb-close');
+  var btnPrev=document.getElementById('lb-prev');
+  var btnNext=document.getElementById('lb-next');
+  if(btnClose)btnClose.onclick=close;
+  if(btnPrev)btnPrev.onclick=function(e){e.stopPropagation();prev();};
+  if(btnNext)btnNext.onclick=function(e){e.stopPropagation();next();};
   overlay.onclick=function(e){if(e.target===overlay)close();};
   document.addEventListener('keydown',function(e){
     if(!overlay.classList.contains('open'))return;
@@ -91,6 +95,292 @@
     e.preventDefault();
     open(all,idx);
   });
+})();
+</script>
+
+<script>
+/* Marks <html> with the current route so page-specific CSS can scope to it.
+   The app is a client-side SPA, so this tracks pushState/replaceState as well
+   as back/forward navigation. */
+(function(){
+  function mark(){
+    var isProject = window.location.pathname.indexOf('/project/') === 0;
+    document.documentElement.setAttribute('data-page', isProject ? 'project' : 'other');
+  }
+  ['pushState','replaceState'].forEach(function(fn){
+    var orig = history[fn];
+    history[fn] = function(){ var r = orig.apply(this, arguments); mark(); return r; };
+  });
+  window.addEventListener('popstate', mark);
+  mark();
+})();
+</script>
+
+<script>
+/* Replaces the "Open project PDF" download button with an inline viewer, so
+   readers stay on the site. The original link is kept as the mobile fallback
+   (mobile browsers cannot render PDFs in a frame). */
+(function(){
+  var observer;
+  var running = false;
+
+  function embedPdf(){
+    // The replacement markup contains its own .pdf link (the mobile
+    // fallback), which would match this selector again on the next
+    // mutation and wrap itself forever. Guard on both the re-entrancy
+    // flag and the fallback container.
+    if (running) return;
+    running = true;
+    if (observer) observer.disconnect();
+
+    try {
+      var links = document.querySelectorAll('a[href$=".pdf"]');
+      for (var i = 0; i < links.length; i++) {
+        var link = links[i];
+        if (link.dataset.pdfEmbedded) continue;
+        if (link.closest('.pdf-embed-fallback')) continue;
+        if (!/project pdf/i.test(link.textContent || '')) continue;
+
+        var url = link.getAttribute('href');
+        var wrap = document.createElement('div');
+        wrap.className = 'pdf-embed-wrap';
+
+        var frame = document.createElement('iframe');
+        frame.className = 'pdf-embed';
+        frame.src = url + '#view=FitH&toolbar=0&navpanes=0';
+        frame.title = 'Project PDF';
+        frame.setAttribute('loading', 'lazy');
+
+        var fallback = document.createElement('div');
+        fallback.className = 'pdf-embed-fallback';
+        var note = document.createElement('p');
+        note.style.cssText = 'margin-bottom:1rem;font-size:13px;color:rgba(0,0,0,.55)';
+        note.textContent = 'View the full project document';
+        var alt = document.createElement('a');
+        alt.href = url;
+        alt.target = '_blank';
+        alt.rel = 'noreferrer';
+        alt.textContent = 'Open project PDF ↗';
+        alt.dataset.pdfEmbedded = '1';
+        fallback.appendChild(note);
+        fallback.appendChild(alt);
+
+        wrap.appendChild(frame);
+        wrap.appendChild(fallback);
+
+        link.dataset.pdfEmbedded = '1';
+        if (link.parentNode) link.parentNode.replaceChild(wrap, link);
+      }
+    } finally {
+      if (observer) observer.observe(document.documentElement, {childList:true, subtree:true});
+      running = false;
+    }
+  }
+
+  // React renders asynchronously and re-renders on navigation, so watch the
+  // tree rather than running once on load.
+  observer = new MutationObserver(embedPdf);
+  observer.observe(document.documentElement, {childList:true, subtree:true});
+  document.addEventListener('DOMContentLoaded', embedPdf);
+  embedPdf();
+})();
+</script>
+
+<style>
+/* Gallery reordering controls in the website editor */
+.reorder-hint{margin-top:14px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(0,0,0,.45)}
+.reorder-thumb{cursor:grab}
+.reorder-thumb.dragging{opacity:.35}
+.reorder-thumb.drop-target{outline:2px solid #C4622D;outline-offset:2px}
+.reorder-nav{position:absolute;left:4px;bottom:4px;display:flex;gap:4px}
+.reorder-nav button{width:26px;height:26px;display:grid;place-items:center;background:rgba(0,0,0,.78);color:#fff;border:none;cursor:pointer;font-size:14px;line-height:1;padding:0}
+.reorder-nav button:hover:not(:disabled){background:#C4622D}
+.reorder-nav button:disabled{opacity:.28;cursor:default}
+.reorder-pos{position:absolute;left:4px;top:4px;min-width:20px;height:20px;padding:0 5px;display:grid;place-items:center;background:rgba(0,0,0,.78);color:#fff;font-size:11px}
+</style>
+<script>
+/* Adds drag-to-reorder (plus arrow buttons for touch) to the gallery
+   thumbnails in the editor. The admin is a compiled React app, so moving DOM
+   nodes alone would be discarded on its next render — the new order is written
+   back into React's own state via the useState dispatcher on the fiber that
+   owns the content object. */
+(function(){
+  var GRID = 'div.mt-5.grid.grid-cols-2.gap-3';
+  var observer, running = false, dragFrom = null;
+
+  function reactKey(el, prefix){
+    for (var k in el) { if (k.indexOf(prefix) === 0) return k; }
+    return null;
+  }
+  function fiberOf(el){ var k = reactKey(el, '__reactFiber$'); return k ? el[k] : null; }
+  function propsOf(el){ var k = reactKey(el, '__reactProps$'); return k ? el[k] : null; }
+
+  /* Walk up the fiber tree for the component holding the editor's content
+     state — identified by having both a projects array and a site object.
+     Only the dispatcher is taken, never the state: React double-buffers
+     fibers, so the state reachable from a DOM node is often the previous
+     render's. Dispatchers are stable across renders, and the functional
+     updater form below always receives the current state. */
+  function findDispatch(startFiber){
+    var f = startFiber, depth = 0;
+    while (f && depth++ < 60) {
+      var candidates = [f, f.alternate];
+      for (var c = 0; c < candidates.length; c++) {
+        if (!candidates[c]) continue;
+        var hook = candidates[c].memoizedState, steps = 0;
+        while (hook && typeof hook === 'object' && steps++ < 60) {
+          var st = hook.memoizedState;
+          if (st && typeof st === 'object' && Array.isArray(st.projects) && st.site &&
+              hook.queue && typeof hook.queue.dispatch === 'function') {
+            return hook.queue.dispatch;
+          }
+          hook = hook.next;
+        }
+      }
+      f = f.return;
+    }
+    return null;
+  }
+
+  function normalise(v){
+    return (v.indexOf('/') === 0 || v.indexOf('http') === 0) ? v : '/media/' + v;
+  }
+
+  function currentOrder(grid){
+    return Array.prototype.map.call(grid.children, function(cell){
+      var img = cell.querySelector('img');
+      var p = img && propsOf(img);
+      return (p && p.src) || (img && img.getAttribute('src')) || '';
+    });
+  }
+
+  /* Writes a new order into React state. The editor merges extraImages and
+     gallery for display, so the reordered list is saved as gallery with
+     extraImages cleared — matching what the add and remove handlers do. */
+  function commit(grid, order){
+    var dispatch = findDispatch(fiberOf(grid));
+    if (!dispatch) return false;
+
+    // Which images are on screen right now — used to identify the open
+    // project inside the updater, where the freshest state is available.
+    var shown = currentOrder(grid);
+
+    dispatch(function(prev){
+      if (!prev || !Array.isArray(prev.projects)) return prev;
+      var idx = -1;
+      for (var i = 0; i < prev.projects.length; i++) {
+        var pr = prev.projects[i];
+        var merged = [].concat(pr.extraImages || [], pr.gallery || []).map(normalise);
+        if (merged.length === shown.length && merged.every(function(v, j){ return v === shown[j]; })) { idx = i; break; }
+      }
+      if (idx < 0) return prev; // no match — leave state untouched
+
+      var projects = prev.projects.map(function(pr, i){
+        if (i !== idx) return pr;
+        var next = {};
+        for (var k in pr) next[k] = pr[k];
+        next.extraImages = [];
+        next.gallery = order;
+        return next;
+      });
+      var nextContent = {};
+      for (var k2 in prev) nextContent[k2] = prev[k2];
+      nextContent.projects = projects;
+      return nextContent;
+    });
+    return true;
+  }
+
+  function move(grid, from, to){
+    var order = currentOrder(grid);
+    if (to < 0 || to >= order.length || from === to) return;
+    var item = order.splice(from, 1)[0];
+    order.splice(to, 0, item);
+    commit(grid, order);
+  }
+
+  function decorate(){
+    if (running) return;
+    running = true;
+    if (observer) observer.disconnect();
+    try {
+      var grids = document.querySelectorAll(GRID);
+      for (var g = 0; g < grids.length; g++) {
+        var grid = grids[g];
+        var cells = grid.children;
+        if (!cells.length || !cells[0].querySelector || !cells[0].querySelector('img')) continue;
+
+        for (var i = 0; i < cells.length; i++) {
+          (function(cell, index, theGrid){
+            if (cell.dataset.reorderReady === String(index)) return;
+            cell.dataset.reorderReady = String(index);
+
+            cell.setAttribute('draggable', 'true');
+            cell.classList.add('reorder-thumb');
+
+            cell.ondragstart = function(e){
+              dragFrom = index;
+              cell.classList.add('dragging');
+              try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(index)); } catch (err) {}
+            };
+            cell.ondragend   = function(){ dragFrom = null; cell.classList.remove('dragging'); };
+            cell.ondragover  = function(e){ e.preventDefault(); cell.classList.add('drop-target'); };
+            cell.ondragleave = function(){ cell.classList.remove('drop-target'); };
+            cell.ondrop      = function(e){
+              e.preventDefault();
+              cell.classList.remove('drop-target');
+              var from = dragFrom;
+              if (from === null || from === undefined) {
+                try { from = parseInt(e.dataTransfer.getData('text/plain'), 10); } catch (err) { return; }
+              }
+              if (!isNaN(from) && from !== index) move(theGrid, from, index);
+            };
+
+            if (!cell.querySelector('.reorder-pos')) {
+              var pos = document.createElement('span');
+              pos.className = 'reorder-pos';
+              pos.textContent = String(index + 1);
+              cell.appendChild(pos);
+            } else {
+              cell.querySelector('.reorder-pos').textContent = String(index + 1);
+            }
+
+            var oldNav = cell.querySelector('.reorder-nav');
+            if (oldNav) oldNav.remove();
+            var nav = document.createElement('div');
+            nav.className = 'reorder-nav';
+            var left = document.createElement('button');
+            left.type = 'button'; left.textContent = '‹';
+            left.title = 'Move earlier'; left.disabled = index === 0;
+            left.onclick = function(e){ e.preventDefault(); e.stopPropagation(); move(theGrid, index, index - 1); };
+            var right = document.createElement('button');
+            right.type = 'button'; right.textContent = '›';
+            right.title = 'Move later'; right.disabled = index === theGrid.children.length - 1;
+            right.onclick = function(e){ e.preventDefault(); e.stopPropagation(); move(theGrid, index, index + 1); };
+            nav.appendChild(left); nav.appendChild(right);
+            cell.appendChild(nav);
+          })(cells[i], i, grid);
+        }
+
+        var next = grid.nextElementSibling;
+        var hasHint = next && next.classList.contains('reorder-hint');
+        if (cells.length > 1 && !hasHint) {
+          var hint = document.createElement('p');
+          hint.className = 'reorder-hint';
+          hint.textContent = 'Drag a photo to reorder, or use the ‹ › buttons. Remember to press Publish.';
+          grid.parentNode.insertBefore(hint, grid.nextSibling);
+        }
+      }
+    } finally {
+      if (observer) observer.observe(document.documentElement, {childList:true, subtree:true});
+      running = false;
+    }
+  }
+
+  observer = new MutationObserver(decorate);
+  observer.observe(document.documentElement, {childList:true, subtree:true});
+  document.addEventListener('DOMContentLoaded', decorate);
+  decorate();
 })();
 </script>
 </body></html>
