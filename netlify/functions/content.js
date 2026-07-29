@@ -1,6 +1,6 @@
 const { createHmac, createHash, timingSafeEqual } = require("crypto");
 
-const VERSION = "v10"; // bump on every change — shown in ?debug=1 so we know what's live
+const VERSION = "v11"; // bump on every change — shown in ?debug=1 so we know what's live
 const COOKIE = "sara_admin";
 // For raw files Cloudinary treats the extension as part of the public_id —
 // it appended ".json" on upload, so the read must look for the same name.
@@ -165,14 +165,101 @@ async function writeContent(data) {
   return { storedPublicId: resBody.public_id, url: resBody.secure_url, bytes: resBody.bytes };
 }
 
+/* Reports, for every project PDF, the stored URL, what Cloudinary returns for
+   it directly, and what this site returns for the /cdn-pdf/ proxy path the
+   inline viewer actually loads. Distinguishes a missing/blocked asset from a
+   broken proxy rule without guessing. */
+async function inspectPdfs(data, event) {
+  const host = event.headers["x-forwarded-host"] || event.headers.host;
+  const proto = (event.headers["x-forwarded-proto"] || "https").split(",")[0];
+  const projects = (data && data.projects) || [];
+
+  const withPdf = projects.filter((p) => p.pdf);
+  const report = {
+    version: VERSION,
+    siteHost: host,
+    projectCount: projects.length,
+    projectsWithPdf: withPdf.length,
+    cdnPdfRuleDeployed: null,
+    pdfs: [],
+  };
+
+  // Does the /cdn-pdf/* rewrite exist at all? If netlify.toml was not
+  // deployed, the SPA catch-all answers with the site's HTML instead.
+  try {
+    const probe = await fetch(`${proto}://${host}/cdn-pdf/__probe__.pdf`);
+    const ctype = probe.headers.get("content-type") || "";
+    report.cdnPdfRuleDeployed = {
+      status: probe.status,
+      contentType: ctype,
+      verdict: ctype.includes("text/html")
+        ? "NOT DEPLOYED — the SPA fallback answered, so netlify.toml is missing the /cdn-pdf/* rule"
+        : "rule appears to be in place (upstream answered, not the SPA fallback)",
+    };
+  } catch (err) {
+    report.cdnPdfRuleDeployed = { error: err.message };
+  }
+
+  for (const p of withPdf) {
+    const entry = { id: p.id, storedUrl: p.pdf };
+
+    try {
+      const direct = await fetch(p.pdf);
+      entry.direct = {
+        status: direct.status,
+        contentType: direct.headers.get("content-type"),
+        bytes: direct.headers.get("content-length"),
+      };
+    } catch (err) {
+      entry.direct = { error: err.message };
+    }
+
+    const proxyPath = p.pdf.replace(/^https?:\/\/res\.cloudinary\.com\/[^/]+\//, "/cdn-pdf/");
+    entry.proxyPath = proxyPath;
+    entry.rewriteApplied = proxyPath !== p.pdf;
+
+    if (entry.rewriteApplied) {
+      try {
+        const viaProxy = await fetch(`${proto}://${host}${proxyPath}`);
+        const ctype = viaProxy.headers.get("content-type") || "";
+        entry.viaProxy = {
+          status: viaProxy.status,
+          contentType: ctype,
+          servedSpaFallback: ctype.includes("text/html"),
+        };
+      } catch (err) {
+        entry.viaProxy = { error: err.message };
+      }
+    } else {
+      entry.viaProxy = { skipped: "stored URL is not a res.cloudinary.com URL" };
+    }
+
+    report.pdfs.push(entry);
+  }
+
+  if (!withPdf.length) {
+    report.note = "No project has a pdf value saved. Upload a PDF in the editor and press Publish first.";
+  }
+  return report;
+}
+
 exports.handler = async function (event) {
   // GET — load content (public).
-  //   ?debug=1 → returns the read diagnostic trace
-  //   ?debug=2 → additionally runs a write self-test (only if no content exists yet)
+  //   ?debug=1   → returns the read diagnostic trace
+  //   ?debug=2   → additionally runs a write self-test (only if no content exists yet)
+  //   ?debug=pdf → reports stored PDF URLs and how they resolve
   if (event.httpMethod === "GET") {
     const debug = event.queryStringParameters?.debug;
     try {
       const { data, trace } = await readContent();
+
+      if (debug === "pdf") {
+        return {
+          statusCode: 200,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(await inspectPdfs(data, event), null, 2),
+        };
+      }
 
       if (debug === "2") {
         const selftest = {};
