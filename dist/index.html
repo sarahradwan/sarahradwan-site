@@ -117,18 +117,109 @@
 </script>
 
 <script>
-/* Replaces the "Open project PDF" download button with an inline viewer, so
-   readers stay on the site. The original link is kept as the mobile fallback
-   (mobile browsers cannot render PDFs in a frame). */
+/* Replaces the "Open project PDF" download button with a page-image viewer.
+
+   The PDF file itself is never sent to the browser. Cloudinary renders each
+   page on demand as an image (the pg_<n> transformation), so a reader sees
+   the whole document but there is no file to download and no direct
+   Cloudinary URL exposed in the markup. This also removes a 2.4 MB download
+   from the page and works on mobile, which the previous iframe did not.
+
+   Only links whose text reads "project pdf" are converted. The CV link in the
+   footer is deliberately left alone so it stays downloadable. */
 (function(){
   var observer;
   var running = false;
+  var MAX_PAGES = 80; // hard stop, in case the end-of-document probe misfires
+
+  // Turns a Cloudinary PDF delivery URL into the URL for page <n> as an image.
+  //   .../image/upload/v123/folder/file.pdf
+  //   .../image/upload/pg_2,f_auto,q_auto,w_1600/v123/folder/file.jpg
+  function pageUrl(pdfUrl, n){
+    var m = pdfUrl.match(/^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.+)\.pdf$/);
+    if (!m) return null;
+    return m[1] + 'pg_' + n + ',f_auto,q_auto,w_1600/' + m[2] + '.jpg';
+  }
+
+  // Appends pages on demand as the reader approaches the end of what has
+  // loaded so far. Cloudinary answers 400 for a page past the end of the
+  // document, which fires onerror and stops us, so the page count never has
+  // to be known in advance.
+  //
+  // Note: the pages cannot use loading="lazy". A lazy image that is far below
+  // the fold never fires onload, which would stall the chain after page one.
+  // A sentinel plus IntersectionObserver gives the same "only fetch what is
+  // actually read" behaviour while keeping the chain driven by real events.
+  function loadPages(container, pdfUrl, status){
+    var n = 0;
+    var busy = false;
+    var done = false;
+
+    var sentinel = document.createElement('div');
+    sentinel.className = 'pdf-pages-sentinel';
+    container.appendChild(sentinel);
+
+    function finish(){
+      done = true;
+      if (io) io.disconnect();
+      if (sentinel.parentNode) sentinel.remove();
+      if (status.parentNode) status.remove();
+    }
+
+    function next(){
+      if (busy || done) return;
+      // The reader navigated away and React removed our container.
+      if (!container.isConnected) { finish(); return; }
+
+      n++;
+      if (n > MAX_PAGES) { finish(); return; }
+
+      busy = true;
+      var img = document.createElement('img');
+      img.className = 'pdf-page';
+      img.alt = 'Project document, page ' + n;
+      img.decoding = 'async';
+
+      img.onload = function(){
+        if (n === 1 && status.parentNode) status.remove();
+        container.insertBefore(img, sentinel);
+        busy = false;
+        // If the sentinel is still in view (short pages, tall screen),
+        // keep going rather than waiting for a scroll that may never come.
+        if (io && isNear(sentinel)) next();
+      };
+      img.onerror = function(){
+        busy = false;
+        if (n === 1) {
+          status.textContent = 'This document could not be displayed.';
+          done = true;
+          if (io) io.disconnect();
+          if (sentinel.parentNode) sentinel.remove();
+        } else {
+          finish(); // past the last page
+        }
+      };
+      img.src = pageUrl(pdfUrl, n);
+    }
+
+    function isNear(el){
+      var r = el.getBoundingClientRect();
+      return r.top < (window.innerHeight || 0) + 800;
+    }
+
+    var io = null;
+    if (window.IntersectionObserver) {
+      io = new IntersectionObserver(function(entries){
+        for (var i = 0; i < entries.length; i++) if (entries[i].isIntersecting) next();
+      }, { rootMargin: '800px 0px' });
+      io.observe(sentinel);
+    }
+    next(); // page one, immediately
+  }
 
   function embedPdf(){
-    // The replacement markup contains its own .pdf link (the mobile
-    // fallback), which would match this selector again on the next
-    // mutation and wrap itself forever. Guard on both the re-entrancy
-    // flag and the fallback container.
+    // Guard against re-entry: this function mutates the DOM, which would
+    // otherwise retrigger the observer that called it.
     if (running) return;
     running = true;
     if (observer) observer.disconnect();
@@ -138,59 +229,26 @@
       for (var i = 0; i < links.length; i++) {
         var link = links[i];
         if (link.dataset.pdfEmbedded) continue;
-        if (link.closest('.pdf-embed-fallback')) continue;
         if (!/project pdf/i.test(link.textContent || '')) continue;
 
         var url = link.getAttribute('href');
+
+        // Anything not served from our Cloudinary account cannot be rendered
+        // page by page, so leave that link exactly as it is.
+        if (!pageUrl(url, 1)) continue;
+
         var wrap = document.createElement('div');
-        wrap.className = 'pdf-embed-wrap';
+        wrap.className = 'pdf-pages';
 
-        // Serve the PDF through our own function rather than framing
-        // res.cloudinary.com directly: a cross-origin frame is blocked by the
-        // site's frame-src policy, and the function also signs the request so
-        // it works whether or not Cloudinary allows plain PDF delivery.
-        var framed = /^https?:\/\/res\.cloudinary\.com\//.test(url)
-          ? '/.netlify/functions/pdf?u=' + encodeURIComponent(url)
-          : url;
-
-        var frame = document.createElement('iframe');
-        frame.className = 'pdf-embed';
-        frame.src = framed + '#view=FitH&toolbar=0&navpanes=0';
-        frame.title = 'Project PDF';
-        frame.setAttribute('loading', 'lazy');
-
-        var fallback = document.createElement('div');
-        fallback.className = 'pdf-embed-fallback';
-        var note = document.createElement('p');
-        note.style.cssText = 'margin-bottom:1rem;font-size:13px;color:rgba(0,0,0,.55)';
-        note.textContent = 'View the full project document';
-        var alt = document.createElement('a');
-        alt.href = url;
-        alt.target = '_blank';
-        alt.rel = 'noreferrer';
-        alt.textContent = 'Open project PDF ↗';
-        alt.dataset.pdfEmbedded = '1';
-        fallback.appendChild(note);
-        fallback.appendChild(alt);
-
-        // Quiet escape hatch under the viewer, in case the PDF cannot render
-        // in the frame on a given browser.
-        var escape = document.createElement('p');
-        escape.className = 'pdf-embed-escape';
-        var escapeLink = document.createElement('a');
-        escapeLink.href = url;
-        escapeLink.target = '_blank';
-        escapeLink.rel = 'noreferrer';
-        escapeLink.textContent = 'Open in a new tab ↗';
-        escapeLink.dataset.pdfEmbedded = '1';
-        escape.appendChild(escapeLink);
-
-        wrap.appendChild(frame);
-        wrap.appendChild(fallback);
-        wrap.appendChild(escape);
+        var status = document.createElement('p');
+        status.className = 'pdf-pages-status';
+        status.textContent = 'Loading document…';
+        wrap.appendChild(status);
 
         link.dataset.pdfEmbedded = '1';
         if (link.parentNode) link.parentNode.replaceChild(wrap, link);
+
+        loadPages(wrap, url, status);
       }
     } finally {
       if (observer) observer.observe(document.documentElement, {childList:true, subtree:true});
@@ -206,6 +264,28 @@
   embedPdf();
 })();
 </script>
+
+<style>
+/* Page-image document viewer (replaces the old PDF iframe + download links) */
+.pdf-pages{display:flex;flex-direction:column;gap:1.25rem}
+.pdf-pages .pdf-page{
+  width:100%;
+  height:auto;
+  display:block;
+  border:1px solid rgba(0,0,0,.12);
+  background:#fff;
+}
+.pdf-pages-status{
+  padding:3rem 1.5rem;
+  text-align:center;
+  font-size:12px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:rgba(0,0,0,.45);
+  border:1px solid rgba(0,0,0,.12);
+  background:#fff;
+}
+</style>
 
 <style>
 /* Gallery reordering controls in the website editor */
