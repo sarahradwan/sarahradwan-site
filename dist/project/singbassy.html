@@ -1,0 +1,487 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Singbassy · Sara Radwan</title>
+    <meta name="description" content="Visual identity for Singbassy, an Emirati women's clothing brand. The name means the beautiful dark-skinned lady in Emirati dialect. A brand built on cultural pride and confidence.">
+    <link rel="canonical" href="https://sarahradwan.me/project/singbassy">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Sara Radwan">
+    <meta property="og:title" content="Singbassy · Sara Radwan">
+    <meta property="og:description" content="Visual identity for Singbassy, an Emirati women's clothing brand. The name means the beautiful dark-skinned lady in Emirati dialect. A brand built on cultural pride and confidence.">
+    <meta property="og:url" content="https://sarahradwan.me/project/singbassy">
+    <meta property="og:image" content="https://sarahradwan.me/media/og-image.jpg">
+    <meta property="og:image:alt" content="Singbassy, work by Sara Radwan">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&amp;family=DM+Sans:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+    <script type="module" crossorigin="" src="/assets/index-Bd_MjNRe.js"></script>
+    <link rel="stylesheet" crossorigin="" href="/assets/index-CPzK5a2H.css">
+  </head>
+  <body>
+    <form name="contact" netlify="" hidden="">
+      <input name="enquiry-type">
+      <input name="name">
+      <input name="email" type="email">
+      <input name="organisation">
+      <textarea name="message"></textarea>
+    </form>
+    <div id="root"></div>
+
+<style>
+#lb-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s}
+#lb-overlay.open{opacity:1;pointer-events:all}
+#lb-img{max-width:90vw;max-height:88vh;object-fit:contain;border-radius:2px;box-shadow:0 8px 60px rgba(0,0,0,.7);transition:opacity .2s}
+#lb-close{position:fixed;top:18px;right:22px;color:#fff;font-size:32px;cursor:pointer;line-height:1;opacity:.7;background:none;border:none;padding:4px 8px}
+#lb-close:hover{opacity:1}
+#lb-prev,#lb-next{position:fixed;top:50%;transform:translateY(-50%);color:#fff;font-size:36px;cursor:pointer;opacity:.5;background:none;border:none;padding:12px 18px;user-select:none}
+#lb-prev:hover,#lb-next:hover{opacity:1}
+#lb-prev{left:10px}
+#lb-next{right:10px}
+#lb-counter{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);color:#fff;font-size:13px;opacity:.5;letter-spacing:.08em}
+</style>
+<div id="lb-overlay" role="dialog" aria-modal="true" aria-label="Image viewer">
+  <button id="lb-close" aria-label="Close">&#x2715;</button>
+  <button id="lb-prev" aria-label="Previous">&#x2039;</button>
+  <img id="lb-img" src="" alt="">
+  <button id="lb-next" aria-label="Next">&#x203a;</button>
+  <div id="lb-counter"></div>
+</div>
+<script>
+(function(){
+  var overlay=document.getElementById('lb-overlay');
+  var img=document.getElementById('lb-img');
+  var counter=document.getElementById('lb-counter');
+  if(!overlay||!img||!counter)return;
+  var imgs=[];var cur=0;
+  function open(srcs,idx){
+    imgs=srcs;cur=idx;
+    img.src=imgs[cur];
+    counter.textContent=(cur+1)+' / '+imgs.length;
+    overlay.classList.add('open');
+    document.body.style.overflow='hidden';
+  }
+  function close(){
+    overlay.classList.remove('open');
+    document.body.style.overflow='';
+    img.src='';
+  }
+  function prev(){cur=(cur-1+imgs.length)%imgs.length;img.src=imgs[cur];counter.textContent=(cur+1)+' / '+imgs.length;}
+  function next(){cur=(cur+1)%imgs.length;img.src=imgs[cur];counter.textContent=(cur+1)+' / '+imgs.length;}
+  var btnClose=document.getElementById('lb-close');
+  var btnPrev=document.getElementById('lb-prev');
+  var btnNext=document.getElementById('lb-next');
+  if(btnClose)btnClose.onclick=close;
+  if(btnPrev)btnPrev.onclick=function(e){e.stopPropagation();prev();};
+  if(btnNext)btnNext.onclick=function(e){e.stopPropagation();next();};
+  overlay.onclick=function(e){if(e.target===overlay)close();};
+  document.addEventListener('keydown',function(e){
+    if(!overlay.classList.contains('open'))return;
+    if(e.key==='Escape')close();
+    if(e.key==='ArrowLeft')prev();
+    if(e.key==='ArrowRight')next();
+  });
+  document.addEventListener('click',function(e){
+    var el=e.target;
+    if(el.tagName!=='IMG')return;
+    var alt=el.getAttribute('alt')||'';
+    if(!alt.includes('project detail'))return;
+    var container=el.closest('.grid');
+    if(!container)return;
+    var all=Array.from(container.querySelectorAll('img')).map(function(i){return i.src;});
+    var idx=all.indexOf(el.src);
+    if(idx<0)idx=0;
+    e.preventDefault();
+    open(all,idx);
+  });
+})();
+</script>
+
+<script>
+/* Marks <html> with the current route so page-specific CSS can scope to it.
+   The app is a client-side SPA, so this tracks pushState/replaceState as well
+   as back/forward navigation. */
+(function(){
+  function mark(){
+    var isProject = window.location.pathname.indexOf('/project/') === 0;
+    document.documentElement.setAttribute('data-page', isProject ? 'project' : 'other');
+  }
+  ['pushState','replaceState'].forEach(function(fn){
+    var orig = history[fn];
+    history[fn] = function(){ var r = orig.apply(this, arguments); mark(); return r; };
+  });
+  window.addEventListener('popstate', mark);
+  mark();
+})();
+</script>
+
+<script>
+/* Replaces the "Open project PDF" download button with a page-image viewer.
+
+   The PDF file itself is never sent to the browser. Cloudinary renders each
+   page on demand as an image (the pg_<n> transformation), so a reader sees
+   the whole document but there is no file to download and no direct
+   Cloudinary URL exposed in the markup. This also removes a 2.4 MB download
+   from the page and works on mobile, which the previous iframe did not.
+
+   Only links whose text reads "project pdf" are converted. The CV link in the
+   footer is deliberately left alone so it stays downloadable. */
+(function(){
+  var observer;
+  var running = false;
+  var MAX_PAGES = 80; // hard stop, in case the end-of-document probe misfires
+
+  // Turns a Cloudinary PDF delivery URL into the URL for page <n> as an image.
+  //   .../image/upload/v123/folder/file.pdf
+  //   .../image/upload/pg_2,f_auto,q_auto,w_1600/v123/folder/file.jpg
+  function pageUrl(pdfUrl, n){
+    var m = pdfUrl.match(/^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.+)\.pdf$/);
+    if (!m) return null;
+    return m[1] + 'pg_' + n + ',f_auto,q_auto,w_1600/' + m[2] + '.jpg';
+  }
+
+  // Appends pages on demand as the reader approaches the end of what has
+  // loaded so far. Cloudinary answers 400 for a page past the end of the
+  // document, which fires onerror and stops us, so the page count never has
+  // to be known in advance.
+  //
+  // Note: the pages cannot use loading="lazy". A lazy image that is far below
+  // the fold never fires onload, which would stall the chain after page one.
+  // A sentinel plus IntersectionObserver gives the same "only fetch what is
+  // actually read" behaviour while keeping the chain driven by real events.
+  function loadPages(container, pdfUrl, status){
+    var n = 0;
+    var busy = false;
+    var done = false;
+
+    var sentinel = document.createElement('div');
+    sentinel.className = 'pdf-pages-sentinel';
+    container.appendChild(sentinel);
+
+    function finish(){
+      done = true;
+      if (io) io.disconnect();
+      if (sentinel.parentNode) sentinel.remove();
+      if (status.parentNode) status.remove();
+    }
+
+    function next(){
+      if (busy || done) return;
+      // The reader navigated away and React removed our container.
+      if (!container.isConnected) { finish(); return; }
+
+      n++;
+      if (n > MAX_PAGES) { finish(); return; }
+
+      busy = true;
+      var img = document.createElement('img');
+      img.className = 'pdf-page';
+      img.alt = 'Project document, page ' + n;
+      img.decoding = 'async';
+
+      img.onload = function(){
+        if (n === 1 && status.parentNode) status.remove();
+        container.insertBefore(img, sentinel);
+        busy = false;
+        // If the sentinel is still in view (short pages, tall screen),
+        // keep going rather than waiting for a scroll that may never come.
+        if (io && isNear(sentinel)) next();
+      };
+      img.onerror = function(){
+        busy = false;
+        if (n === 1) {
+          status.textContent = 'This document could not be displayed.';
+          done = true;
+          if (io) io.disconnect();
+          if (sentinel.parentNode) sentinel.remove();
+        } else {
+          finish(); // past the last page
+        }
+      };
+      img.src = pageUrl(pdfUrl, n);
+    }
+
+    function isNear(el){
+      var r = el.getBoundingClientRect();
+      return r.top < (window.innerHeight || 0) + 800;
+    }
+
+    var io = null;
+    if (window.IntersectionObserver) {
+      io = new IntersectionObserver(function(entries){
+        for (var i = 0; i < entries.length; i++) if (entries[i].isIntersecting) next();
+      }, { rootMargin: '800px 0px' });
+      io.observe(sentinel);
+    }
+    next(); // page one, immediately
+  }
+
+  function embedPdf(){
+    // Guard against re-entry: this function mutates the DOM, which would
+    // otherwise retrigger the observer that called it.
+    if (running) return;
+    running = true;
+    if (observer) observer.disconnect();
+
+    try {
+      var links = document.querySelectorAll('a[href$=".pdf"]');
+      for (var i = 0; i < links.length; i++) {
+        var link = links[i];
+        if (link.dataset.pdfEmbedded) continue;
+        if (!/project pdf/i.test(link.textContent || '')) continue;
+
+        var url = link.getAttribute('href');
+
+        // Anything not served from our Cloudinary account cannot be rendered
+        // page by page, so leave that link exactly as it is.
+        if (!pageUrl(url, 1)) continue;
+
+        var wrap = document.createElement('div');
+        wrap.className = 'pdf-pages';
+
+        var status = document.createElement('p');
+        status.className = 'pdf-pages-status';
+        status.textContent = 'Loading document…';
+        wrap.appendChild(status);
+
+        link.dataset.pdfEmbedded = '1';
+        if (link.parentNode) link.parentNode.replaceChild(wrap, link);
+
+        loadPages(wrap, url, status);
+      }
+    } finally {
+      if (observer) observer.observe(document.documentElement, {childList:true, subtree:true});
+      running = false;
+    }
+  }
+
+  // React renders asynchronously and re-renders on navigation, so watch the
+  // tree rather than running once on load.
+  observer = new MutationObserver(embedPdf);
+  observer.observe(document.documentElement, {childList:true, subtree:true});
+  document.addEventListener('DOMContentLoaded', embedPdf);
+  embedPdf();
+})();
+</script>
+
+<style>
+/* Page-image document viewer (replaces the old PDF iframe + download links) */
+.pdf-pages{display:flex;flex-direction:column;gap:1.25rem}
+.pdf-pages .pdf-page{
+  width:100%;
+  height:auto;
+  display:block;
+  border:1px solid rgba(0,0,0,.12);
+  background:#fff;
+}
+.pdf-pages-status{
+  padding:3rem 1.5rem;
+  text-align:center;
+  font-size:12px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:rgba(0,0,0,.45);
+  border:1px solid rgba(0,0,0,.12);
+  background:#fff;
+}
+</style>
+
+<style>
+/* Gallery reordering controls in the website editor */
+.reorder-hint{margin-top:14px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(0,0,0,.45)}
+.reorder-thumb{cursor:grab}
+.reorder-thumb.dragging{opacity:.35}
+.reorder-thumb.drop-target{outline:2px solid #C4622D;outline-offset:2px}
+.reorder-nav{position:absolute;left:4px;bottom:4px;display:flex;gap:4px}
+.reorder-nav button{width:26px;height:26px;display:grid;place-items:center;background:rgba(0,0,0,.78);color:#fff;border:none;cursor:pointer;font-size:14px;line-height:1;padding:0}
+.reorder-nav button:hover:not(:disabled){background:#C4622D}
+.reorder-nav button:disabled{opacity:.28;cursor:default}
+.reorder-pos{position:absolute;left:4px;top:4px;min-width:20px;height:20px;padding:0 5px;display:grid;place-items:center;background:rgba(0,0,0,.78);color:#fff;font-size:11px}
+</style>
+<script>
+/* Adds drag-to-reorder (plus arrow buttons for touch) to the gallery
+   thumbnails in the editor. The admin is a compiled React app, so moving DOM
+   nodes alone would be discarded on its next render — the new order is written
+   back into React's own state via the useState dispatcher on the fiber that
+   owns the content object. */
+(function(){
+  var GRID = 'div.mt-5.grid.grid-cols-2.gap-3';
+  var observer, running = false, dragFrom = null;
+
+  function reactKey(el, prefix){
+    for (var k in el) { if (k.indexOf(prefix) === 0) return k; }
+    return null;
+  }
+  function fiberOf(el){ var k = reactKey(el, '__reactFiber$'); return k ? el[k] : null; }
+  function propsOf(el){ var k = reactKey(el, '__reactProps$'); return k ? el[k] : null; }
+
+  /* Walk up the fiber tree for the component holding the editor's content
+     state — identified by having both a projects array and a site object.
+     Only the dispatcher is taken, never the state: React double-buffers
+     fibers, so the state reachable from a DOM node is often the previous
+     render's. Dispatchers are stable across renders, and the functional
+     updater form below always receives the current state. */
+  function findDispatch(startFiber){
+    var f = startFiber, depth = 0;
+    while (f && depth++ < 60) {
+      var candidates = [f, f.alternate];
+      for (var c = 0; c < candidates.length; c++) {
+        if (!candidates[c]) continue;
+        var hook = candidates[c].memoizedState, steps = 0;
+        while (hook && typeof hook === 'object' && steps++ < 60) {
+          var st = hook.memoizedState;
+          if (st && typeof st === 'object' && Array.isArray(st.projects) && st.site &&
+              hook.queue && typeof hook.queue.dispatch === 'function') {
+            return hook.queue.dispatch;
+          }
+          hook = hook.next;
+        }
+      }
+      f = f.return;
+    }
+    return null;
+  }
+
+  function normalise(v){
+    return (v.indexOf('/') === 0 || v.indexOf('http') === 0) ? v : '/media/' + v;
+  }
+
+  function currentOrder(grid){
+    return Array.prototype.map.call(grid.children, function(cell){
+      var img = cell.querySelector('img');
+      var p = img && propsOf(img);
+      return (p && p.src) || (img && img.getAttribute('src')) || '';
+    });
+  }
+
+  /* Writes a new order into React state. The editor merges extraImages and
+     gallery for display, so the reordered list is saved as gallery with
+     extraImages cleared — matching what the add and remove handlers do. */
+  function commit(grid, order){
+    var dispatch = findDispatch(fiberOf(grid));
+    if (!dispatch) return false;
+
+    // Which images are on screen right now — used to identify the open
+    // project inside the updater, where the freshest state is available.
+    var shown = currentOrder(grid);
+
+    dispatch(function(prev){
+      if (!prev || !Array.isArray(prev.projects)) return prev;
+      var idx = -1;
+      for (var i = 0; i < prev.projects.length; i++) {
+        var pr = prev.projects[i];
+        var merged = [].concat(pr.extraImages || [], pr.gallery || []).map(normalise);
+        if (merged.length === shown.length && merged.every(function(v, j){ return v === shown[j]; })) { idx = i; break; }
+      }
+      if (idx < 0) return prev; // no match — leave state untouched
+
+      var projects = prev.projects.map(function(pr, i){
+        if (i !== idx) return pr;
+        var next = {};
+        for (var k in pr) next[k] = pr[k];
+        next.extraImages = [];
+        next.gallery = order;
+        return next;
+      });
+      var nextContent = {};
+      for (var k2 in prev) nextContent[k2] = prev[k2];
+      nextContent.projects = projects;
+      return nextContent;
+    });
+    return true;
+  }
+
+  function move(grid, from, to){
+    var order = currentOrder(grid);
+    if (to < 0 || to >= order.length || from === to) return;
+    var item = order.splice(from, 1)[0];
+    order.splice(to, 0, item);
+    commit(grid, order);
+  }
+
+  function decorate(){
+    if (running) return;
+    running = true;
+    if (observer) observer.disconnect();
+    try {
+      var grids = document.querySelectorAll(GRID);
+      for (var g = 0; g < grids.length; g++) {
+        var grid = grids[g];
+        var cells = grid.children;
+        if (!cells.length || !cells[0].querySelector || !cells[0].querySelector('img')) continue;
+
+        for (var i = 0; i < cells.length; i++) {
+          (function(cell, index, theGrid){
+            if (cell.dataset.reorderReady === String(index)) return;
+            cell.dataset.reorderReady = String(index);
+
+            cell.setAttribute('draggable', 'true');
+            cell.classList.add('reorder-thumb');
+
+            cell.ondragstart = function(e){
+              dragFrom = index;
+              cell.classList.add('dragging');
+              try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(index)); } catch (err) {}
+            };
+            cell.ondragend   = function(){ dragFrom = null; cell.classList.remove('dragging'); };
+            cell.ondragover  = function(e){ e.preventDefault(); cell.classList.add('drop-target'); };
+            cell.ondragleave = function(){ cell.classList.remove('drop-target'); };
+            cell.ondrop      = function(e){
+              e.preventDefault();
+              cell.classList.remove('drop-target');
+              var from = dragFrom;
+              if (from === null || from === undefined) {
+                try { from = parseInt(e.dataTransfer.getData('text/plain'), 10); } catch (err) { return; }
+              }
+              if (!isNaN(from) && from !== index) move(theGrid, from, index);
+            };
+
+            if (!cell.querySelector('.reorder-pos')) {
+              var pos = document.createElement('span');
+              pos.className = 'reorder-pos';
+              pos.textContent = String(index + 1);
+              cell.appendChild(pos);
+            } else {
+              cell.querySelector('.reorder-pos').textContent = String(index + 1);
+            }
+
+            var oldNav = cell.querySelector('.reorder-nav');
+            if (oldNav) oldNav.remove();
+            var nav = document.createElement('div');
+            nav.className = 'reorder-nav';
+            var left = document.createElement('button');
+            left.type = 'button'; left.textContent = '‹';
+            left.title = 'Move earlier'; left.disabled = index === 0;
+            left.onclick = function(e){ e.preventDefault(); e.stopPropagation(); move(theGrid, index, index - 1); };
+            var right = document.createElement('button');
+            right.type = 'button'; right.textContent = '›';
+            right.title = 'Move later'; right.disabled = index === theGrid.children.length - 1;
+            right.onclick = function(e){ e.preventDefault(); e.stopPropagation(); move(theGrid, index, index + 1); };
+            nav.appendChild(left); nav.appendChild(right);
+            cell.appendChild(nav);
+          })(cells[i], i, grid);
+        }
+
+        var next = grid.nextElementSibling;
+        var hasHint = next && next.classList.contains('reorder-hint');
+        if (cells.length > 1 && !hasHint) {
+          var hint = document.createElement('p');
+          hint.className = 'reorder-hint';
+          hint.textContent = 'Drag a photo to reorder, or use the ‹ › buttons. Remember to press Publish.';
+          grid.parentNode.insertBefore(hint, grid.nextSibling);
+        }
+      }
+    } finally {
+      if (observer) observer.observe(document.documentElement, {childList:true, subtree:true});
+      running = false;
+    }
+  }
+
+  observer = new MutationObserver(decorate);
+  observer.observe(document.documentElement, {childList:true, subtree:true});
+  document.addEventListener('DOMContentLoaded', decorate);
+  decorate();
+})();
+</script>
+</body></html>

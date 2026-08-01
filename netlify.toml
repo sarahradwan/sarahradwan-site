@@ -26,32 +26,31 @@ for = "/*"
   # YouTube/Vimeo project videos.
   Content-Security-Policy    = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://res.cloudinary.com https://sarahradwan.me; connect-src 'self' https://res.cloudinary.com; frame-src 'self' https://res.cloudinary.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'self' https://res.cloudinary.com;"
 
-# ── Image CDN — Cloudinary auto-format + quality ──────────────────────────────
-# Requests to /images/* are proxied through Cloudinary which serves WebP/AVIF
-# automatically and compresses intelligently. All media/ images should be
-# referenced as /images/<filename> in the React components.
-[[redirects]]
-from   = "/images/*"
-to     = "https://res.cloudinary.com/dskzcetqe/image/fetch/f_auto,q_auto/https://sarahradwan.me/cld-assets/images/:splat?_a=BBFAAAAA0"
-status = 302
-force  = true
+# ── Caching ───────────────────────────────────────────────────────────────────
+# Filenames under /assets/ carry a content hash, so a change always produces a
+# new filename. They can therefore be cached forever, which removes a
+# revalidation round trip from every repeat visit.
+[[headers]]
+for = "/assets/*"
 
-[[redirects]]
-from   = "/cld-assets/images/*"
-to     = "/images/:splat"
-status = 200
-force  = true
+  [headers.values]
+  Cache-Control = "public, max-age=31536000, immutable"
 
-# ── PDF proxy ─────────────────────────────────────────────────────────────────
-# Serves Cloudinary-hosted project PDFs from this domain (status 200 = rewrite,
-# not a redirect). The inline PDF viewer then frames a same-origin URL, so it
-# cannot be blocked by frame-src regardless of how the CSP is read — a
-# cross-origin frame to Cloudinary showed "This content is blocked" in Chrome.
-[[redirects]]
-from   = "/cdn-pdf/*"
-to     = "https://res.cloudinary.com/dskzcetqe/:splat"
-status = 200
-force  = true
+# Photography and documents shipped with the site. Not hashed, so this is a
+# month rather than forever: replacing an image means the new version is
+# picked up within 30 days, or immediately under a new filename.
+[[headers]]
+for = "/media/*"
+
+  [headers.values]
+  Cache-Control = "public, max-age=2592000"
+
+# NOTE: the former /images/*, /cld-assets/* and /cdn-pdf/* rules were removed.
+# Nothing referenced them: the React bundle contains no occurrence of any of
+# the three. The /images/* rule additionally returned 401 because "fetch"
+# delivery is not enabled on the Cloudinary account. Image optimisation now
+# happens in netlify/functions/content.js, which rewrites Cloudinary URLs with
+# f_auto,q_auto as the content is served.
 
 # ── Legacy URL redirect ───────────────────────────────────────────────────────
 [[redirects]]

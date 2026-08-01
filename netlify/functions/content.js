@@ -1,6 +1,5 @@
 const { createHmac, createHash, timingSafeEqual } = require("crypto");
 
-const VERSION = "v11"; // bump on every change — shown in ?debug=1 so we know what's live
 const COOKIE = "sara_admin";
 // For raw files Cloudinary treats the extension as part of the public_id —
 // it appended ".json" on upload, so the read must look for the same name.
@@ -32,8 +31,9 @@ function isAuthenticated(event) {
   } catch { return false; }
 }
 
-// Returns { data, trace } — trace records every step so failures are visible
-// via /.netlify/functions/content?debug=1 instead of silently becoming null.
+// Returns { data, trace }. The trace records every step; it is kept for
+// server-side diagnosis but is never sent to the browser, so a failure here
+// simply yields null and the site falls back to its built-in defaults.
 async function readContent() {
   const trace = [];
   const { CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } = process.env;
@@ -165,132 +165,87 @@ async function writeContent(data) {
   return { storedPublicId: resBody.public_id, url: resBody.secure_url, bytes: resBody.bytes };
 }
 
-/* Reports, for every project PDF, the stored URL, what Cloudinary returns for
-   it directly, and what this site returns for the /cdn-pdf/ proxy path the
-   inline viewer actually loads. Distinguishes a missing/blocked asset from a
-   broken proxy rule without guessing. */
-async function inspectPdfs(data, event) {
-  const host = event.headers["x-forwarded-host"] || event.headers.host;
-  const proto = (event.headers["x-forwarded-proto"] || "https").split(",")[0];
-  const projects = (data && data.projects) || [];
+// ── Asset URL normalisation, applied as content is served ────────────────────
+//
+// Both fixes below are done here rather than in the stored content so they
+// apply to everything already saved AND to anything uploaded from now on,
+// without anyone having to remember.
 
-  const withPdf = projects.filter((p) => p.pdf);
-  const report = {
-    version: VERSION,
-    siteHost: host,
-    projectCount: projects.length,
-    projectsWithPdf: withPdf.length,
-    cdnPdfRuleDeployed: null,
-    pdfs: [],
-  };
+// A bare filename as saved by the editor, e.g. "education-spread.jpg".
+const BARE_FILENAME = /^[A-Za-z0-9._-]+\.(jpe?g|png|svg|webp|gif)$/i;
 
-  // Does the /cdn-pdf/* rewrite exist at all? If netlify.toml was not
-  // deployed, the SPA catch-all answers with the site's HTML instead.
-  try {
-    const probe = await fetch(`${proto}://${host}/cdn-pdf/__probe__.pdf`);
-    const ctype = probe.headers.get("content-type") || "";
-    report.cdnPdfRuleDeployed = {
-      status: probe.status,
-      contentType: ctype,
-      verdict: ctype.includes("text/html")
-        ? "NOT DEPLOYED — the SPA fallback answered, so netlify.toml is missing the /cdn-pdf/* rule"
-        : "rule appears to be in place (upstream answered, not the SPA fallback)",
-    };
-  } catch (err) {
-    report.cdnPdfRuleDeployed = { error: err.message };
+// A Cloudinary delivery URL: prefix + everything after /upload/.
+const CLOUDINARY_UPLOAD = /^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.+)$/;
+
+// f_auto picks WebP/AVIF per browser, q_auto compresses, w_1600 caps the width
+// at roughly twice the largest slot the design ever renders.
+const DELIVERY = "f_auto,q_auto,w_1600";
+
+function normaliseAsset(value) {
+  if (typeof value !== "string" || !value) return value;
+
+  // A bare filename resolves against the current route (/project/<id>/<file>)
+  // and 404s. Everything shipped with the site lives under /media/.
+  if (BARE_FILENAME.test(value)) return "/media/" + value;
+
+  const m = value.match(CLOUDINARY_UPLOAD);
+  if (!m) return value;
+  const rest = m[2];
+
+  // Never transform a PDF. Cloudinary responds to a delivery transform on a
+  // .pdf by flattening it to a single image, which breaks the page-by-page
+  // document viewer that reads these URLs.
+  if (/\.pdf(\?|$)/i.test(rest)) return value;
+
+  // Anything not starting with a version segment already carries a
+  // transformation, so leave it exactly as it is.
+  if (!/^v\d+\//.test(rest)) return value;
+
+  return m[1] + DELIVERY + "/" + rest;
+}
+
+function normaliseAssets(node) {
+  if (typeof node === "string") return normaliseAsset(node);
+  if (Array.isArray(node)) return node.map(normaliseAssets);
+  if (node && typeof node === "object") {
+    const out = {};
+    for (const key of Object.keys(node)) out[key] = normaliseAssets(node[key]);
+    return out;
   }
-
-  for (const p of withPdf) {
-    const entry = { id: p.id, storedUrl: p.pdf };
-
-    try {
-      const direct = await fetch(p.pdf);
-      entry.direct = {
-        status: direct.status,
-        contentType: direct.headers.get("content-type"),
-        bytes: direct.headers.get("content-length"),
-      };
-    } catch (err) {
-      entry.direct = { error: err.message };
-    }
-
-    const proxyPath = p.pdf.replace(/^https?:\/\/res\.cloudinary\.com\/[^/]+\//, "/cdn-pdf/");
-    entry.proxyPath = proxyPath;
-    entry.rewriteApplied = proxyPath !== p.pdf;
-
-    if (entry.rewriteApplied) {
-      try {
-        const viaProxy = await fetch(`${proto}://${host}${proxyPath}`);
-        const ctype = viaProxy.headers.get("content-type") || "";
-        entry.viaProxy = {
-          status: viaProxy.status,
-          contentType: ctype,
-          servedSpaFallback: ctype.includes("text/html"),
-        };
-      } catch (err) {
-        entry.viaProxy = { error: err.message };
-      }
-    } else {
-      entry.viaProxy = { skipped: "stored URL is not a res.cloudinary.com URL" };
-    }
-
-    report.pdfs.push(entry);
-  }
-
-  if (!withPdf.length) {
-    report.note = "No project has a pdf value saved. Upload a PDF in the editor and press Publish first.";
-  }
-  return report;
+  return node;
 }
 
 exports.handler = async function (event) {
   // GET — load content (public).
-  //   ?debug=1   → returns the read diagnostic trace
-  //   ?debug=2   → additionally runs a write self-test (only if no content exists yet)
-  //   ?debug=pdf → reports stored PDF URLs and how they resolve
   if (event.httpMethod === "GET") {
-    const debug = event.queryStringParameters?.debug;
+    // The editor must never be served a cached copy: publishing and then
+    // reloading /admin within the cache window would load stale content and
+    // silently revert the edit on the next save.
+    const isEditor = isAuthenticated(event);
     try {
-      const { data, trace } = await readContent();
-
-      if (debug === "pdf") {
-        return {
-          statusCode: 200,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(await inspectPdfs(data, event), null, 2),
-        };
-      }
-
-      if (debug === "2") {
-        const selftest = {};
-        if (data !== null) {
-          selftest.skipped = "Content already exists — write test skipped so it isn't overwritten.";
-        } else {
-          try {
-            selftest.write = await writeContent({ __selftest: true, savedAt: new Date().toISOString() });
-            const recheck = await readContent();
-            selftest.readBack = { hasData: recheck.data !== null, trace: recheck.trace };
-          } catch (err) {
-            selftest.writeError = err.message;
-          }
-        }
-        return {
-          statusCode: 200,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ version: VERSION, trace, hasData: data !== null, selftest }),
-        };
-      }
+      const { data } = await readContent();
 
       return {
         statusCode: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(debug === "1" ? { version: VERSION, trace, hasData: data !== null } : (data || null)),
+        headers: {
+          "Content-Type": "application/json",
+          // Visitors are served from the CDN for a minute, which keeps the
+          // Cloudinary Admin API off the hot path under traffic. Published
+          // changes go live within 60 seconds.
+          "Cache-Control": isEditor
+            ? "no-store"
+            : "public, max-age=0, s-maxage=60",
+          Vary: "Cookie",
+        },
+        body: JSON.stringify(data ? normaliseAssets(data) : null),
       };
-    } catch (err) {
+    } catch {
+      // The site renders its built-in defaults when content is null, so a
+      // failure here degrades rather than breaking the page.
       return {
         statusCode: 200,
-        headers: { "Content-Type": "application/json" },
-        body: debug ? JSON.stringify({ version: VERSION, fatal: err.message }) : "null",
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+        body: "null",
       };
     }
   }
