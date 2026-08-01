@@ -266,6 +266,12 @@
 </script>
 
 <style>
+/* An <img> with no source still occupies space and, in some browsers, draws a
+   broken-image icon. The client-logo slot is empty on every project, so one of
+   these renders on each project page. Hide any image that has nothing to show
+   rather than leave a gap in the layout. */
+img[src=""], img:not([src]) { display: none !important; }
+
 /* Page-image document viewer (replaces the old PDF iframe + download links) */
 .pdf-pages{display:flex;flex-direction:column;gap:1.25rem}
 .pdf-pages .pdf-page{
